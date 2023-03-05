@@ -1,9 +1,39 @@
 #include "Server.h"
 #include <algorithm>
 #include <sstream>
-#include <openssl/md5.h>
-#include<string>
+#include <nlohmann/json.hpp>
+#include <fstream>
+#include <openssl/sha.h>
+#include <string>
+#include <iostream>
+#include <cstdint>
+#include <tuple>
+#include <boost/coroutine/coroutine.hpp>
 using namespace std::string_literals;
+auto GetMySqlDataFromJson(){
+    std::tuple<std::string, std::int32_t, std::string, std::string> result;
+    using json = nlohmann::json;
+    std::ifstream istr("../configs/mySqlDbConfig.json");
+    std::cout << "startParsing" << std::endl;
+    json sqlConfJson = json::parse(istr);
+    std::cout << "first config parsed" << std::endl;
+    istr.close();
+    std::get<0>(result) =  sqlConfJson["hostName"].get<std::string>();
+    std::get<1>(result) = sqlConfJson["port"].get<std::int32_t>();
+    std::get<2>(result) = sqlConfJson["user"].get<std::string>();
+    std::string pathToPassword = sqlConfJson["pathToPasswordFile"].get<std::string>();
+    istr.open(pathToPassword);
+    json dbPassword = json::parse(istr);
+    istr.close();
+    std::get<3>(result) = dbPassword["password"].get<std::string>();
+    return result;
+}
+auto BuildMySqlSessionFromJsonConfig(){
+    auto data = GetMySqlDataFromJson();
+    auto [host, port, user, password] = data;
+    mysqlx::Session result(host.c_str(), port, user.c_str(), password.c_str());
+    return result;
+}
 std::int32_t ParseVectorToInt32(const std::vector<char>& data){
     std::int32_t result;
     std::string str(data.begin(), data.end());
@@ -13,8 +43,8 @@ std::int32_t ParseVectorToInt32(const std::vector<char>& data){
 }
 void ServerDemon::SendDataToDB(const std::pair<std::vector<char>, std::vector<char>>& data){
     using namespace mysqlx;
-    std::string hashed(16, 'a');
-    MD5(reinterpret_cast<const unsigned char*>(data.second.data()), data.second.size(), reinterpret_cast<unsigned char*>(hashed.data()));
+    std::string hashed(32, 'a');
+    SHA256(reinterpret_cast<const unsigned char*>(data.second.data()), data.second.size(), reinterpret_cast<unsigned char*>(hashed.data()));
     Schema db = sess.getSchema("IBSystems");
     Table myColl = db.getTable("passcont");
     std::string login(data.first.cbegin(), data.first.cend());
@@ -50,7 +80,7 @@ std::pair<std::vector<char>, std::vector<char>> ServerDemon::GetAuthDataForRegis
     return result;
 
 }
-std::vector<char> ServerDemon::ReadForCount(Socket_ptr client_socket, boost::system::error_code& ec, std::int32_t count, asio::yield_context yield){
+std::vector<char> ServerDemon::ReadForCount(Socket_ptr client_socket, boost::system::error_code& ec, std::int32_t count,  asio::yield_context yield){
     std::int32_t curCount = 0;
     std::vector<char> result;
     if(!client_socket->nonProcessedData.empty()){
@@ -92,7 +122,7 @@ void ServerDemon::do_accept(Socket_ptr client_socket, boost::system::error_code&
     this->acc.async_accept(client_socket->socket, yield[ec]);
 }
 
-ServerDemon::ServerDemon() : ep(asio::ip::tcp::v4(), 2001), acc(sysService, ep), sess("localhost", 33060, "root", "12345434"){}
+ServerDemon::ServerDemon() : ep(asio::ip::tcp::v4(), 2001), acc(sysService, ep), sess(BuildMySqlSessionFromJsonConfig()){}
 void ServerDemon::RunThread(asio::yield_context yield){
     try {
         while (true) {
@@ -100,7 +130,7 @@ void ServerDemon::RunThread(asio::yield_context yield){
             boost::system::error_code code;
             this->do_accept(sock, code, yield);
             do_clientSession(sock, code);
-            boost::this_thread::sleep_for(boost::chrono::seconds(0));
+            boost::this_thread::interruption_point();
         }
     } catch(boost::thread_interrupted& inter){
         return;
@@ -108,6 +138,7 @@ void ServerDemon::RunThread(asio::yield_context yield){
 }
 ServerDemon::~ServerDemon(){
     this->threads.interrupt_all();
+    this->sysService.stop();
     this->threads.join_all();
 }
 void ServerDemon::RunDemon(){
@@ -120,5 +151,14 @@ void ServerDemon::RunDemon(){
     };
     for(int i = 0; i < 8; i++){
         this->threads.create_thread(run);
+    }
+    std::string answer;
+    std::cout << "Server started" << std::endl;
+    while(true){
+        std::cin >> answer;
+        if(answer == "exit"){
+            std::cout << "Bye" << std::endl;
+            break;
+        }
     }
 }
