@@ -13,38 +13,11 @@
 #include <tuple>
 #include <boost/coroutine/coroutine.hpp>
 using namespace std::string_literals;
-std::int32_t ParseVectorToInt32(const std::vector<char> &data)
-{
-    std::int32_t result;
-    std::string str(data.begin(), data.end());
-    std::istringstream istr(str);
-    istr >> result;
-    return result;
-}
-std::string utf8_to_string(const char *utf8str, const std::locale& loc)
-{
-    // UTF-8 to wstring
-    std::wstring_convert<std::codecvt_utf8<wchar_t>> wconv;
-    std::wstring wstr = wconv.from_bytes(utf8str);
-    // wstring to string
-    std::vector<char> buf(wstr.size());
-    std::use_facet<std::ctype<wchar_t>>(loc).narrow(wstr.data(), wstr.data() + wstr.size(), '?', buf.data());
-    return std::string(buf.data(), buf.size());
-}
-void ServerDemon::SendDataToDB(const std::pair<std::string, std::string> &data)
-{
-    auto self = shared_from_this();
-    self->master.SendRegistrDataToDB(data);
-    
-}
-std::pair<std::string, std::string> ServerDemon::GetAuthDataForRegist(JsonMq &jsonMqSession, boost::system::error_code &ec, asio::yield_context yield)
+std::pair<std::string, std::string> ServerDemon::GetAuthDataForRegist(Json &jsonData, boost::system::error_code &ec, asio::yield_context yield)
 {
     std::pair<std::string, std::string> result;
-    try{
-    auto jsonData = jsonMqSession.GetJson(ec, yield);
-    if (ec.value() == 0)
+    try
     {
-        std::cout << "Json getted" << std::endl;
         auto login = jsonData.find("username");
         auto password = jsonData.find("password");
         std::cout << "finded" << std::endl;
@@ -61,50 +34,157 @@ std::pair<std::string, std::string> ServerDemon::GetAuthDataForRegist(JsonMq &js
             std::cout << "Json linked" << std::endl;
             std::cout << result.first << " " << result.second << std::endl;
         }
+        return result;
     }
-    return result;
-    } catch(std::exception& ex){
+    catch (std::exception &ex)
+    {
         ec = asio::error::invalid_argument;
         return result;
     }
 }
+auto &ServerDemon::GetDbSession()
+{
+    return this->master;
+}
+std::map<std::string, CallableReaction> ConstructReacions()
+{
+    std::map<std::string, CallableReaction> result;
+    {
+        auto SendRegistDataToDb = [](MyRf<JsonMq> jsonSession, std::weak_ptr<ServerDemon> serverSession, MyRf<Json> data, MyRf<boost::system::error_code> ec, asio::yield_context yield)
+        {
+            auto sharedContext = serverSession.lock();
+            if (sharedContext != nullptr)
+            {
+                auto registrData = sharedContext->GetAuthDataForRegist(data.get(), ec, yield);
+                auto &dbSession = sharedContext->GetDbSession();
+                dbSession.SendRegistrDataToDB(registrData);
+            }
+        };
+        result.insert(std::make_pair("RegistrationRequest", std::move(SendRegistDataToDb)));
+    }
+    {
+        auto SendWordToClient = [](MyRf<JsonMq> jsonSession, std::weak_ptr<ServerDemon> serverSession, MyRf<Json> data, MyRf<boost::system::error_code> ec, asio::yield_context yield)
+        {
+            auto sharedContext = serverSession.lock();
+            if (sharedContext != nullptr)
+            {
+                std::pair<std::string, std::string> result;
+                try
+                {
+                    auto login = data.get().find("username");
+                    if (login == data.get().cend())
+                    {
+                        ec.get() = asio::error::invalid_argument;
+                        std::cout << "bad" << std::endl;
+                    }
+                    else
+                    {
+                        auto word = sharedContext->GetDbSession().GetWordFromDb(login->get<std::string>());
+                        Json dataToSend;
+                        dataToSend["KeyWord"] = word;
+                        jsonSession.get().SendJson(dataToSend, ec.get(), yield);
+                    }
+                }
+                catch (std::exception &ex)
+                {
+                    ec.get() = asio::error::invalid_argument;
+                }
+            }
+        };
+        result.insert(std::make_pair("GetKeyWordRequest", std::move(SendWordToClient)));
+    }
+    {
+        auto CompareHashs = [](MyRf<JsonMq> jsonSession, std::weak_ptr<ServerDemon> serverSession, MyRf<Json> data, MyRf<boost::system::error_code> ec, asio::yield_context yield){
+            auto sharedContext = serverSession.lock();
+            if (sharedContext != nullptr){
+                try
+                {
+                    auto login = data.get().find("username");
+                    auto hash = data.get().find("hash");
+                    if (login == data.get().cend() || hash == data.get().cend())
+                    {
+                        ec.get() = asio::error::invalid_argument;
+                        std::cout << "bad" << std::endl;
+                    }
+                    else
+                    {
+                        auto isEq = sharedContext->GetDbSession().CompareSendedAuthDataWithDb(std::make_pair(login->get<std::string>(), hash->get<std::string>()));
+                        Json answer;
+                        if(isEq){
+                            answer["AuthResult"] = "Passed";
+                        }
+                        else{
+                            answer["AuthResult"] = "Not Passed";
+                        }
+                        jsonSession.get().SendJson(answer, ec.get(), yield);
+                    };
+                }
+                catch (std::exception &ex)
+                {
+                    ec.get() = asio::error::invalid_argument;
+                }
+            }
+        };
+        result.insert(std::make_pair("GetAuthResult", std::move(CompareHashs)));
+    }
+    return result;
+}
+std::optional<CallableReaction> ServerDemon::GetReaction(const std::string &requestType)
+{
+    static auto ReactionsCont = ConstructReacions();
+    auto it = ReactionsCont.find(requestType);
+    std::optional<CallableReaction> result;
+    if(it != ReactionsCont.cend()){
+        result = (*it).second;
+    }
+    return result;
+}
 void ServerDemon::do_clientSession(JsonMq &jsonMqSession, boost::system::error_code &ec)
 {
-    std::pair<std::string, std::string> authData;
     auto self = shared_from_this();
-    auto dataForSpawnFactory = [self, &ec, &jsonMqSession](auto result)
+    auto dataForSpawnFactory = [self, &ec, &jsonMqSession]()
     {
-        return [self, &ec, &jsonMqSession, result](asio::yield_context yield) mutable
+        return [self, &ec, &jsonMqSession](asio::yield_context yield) mutable
         {
-            std::cout << "ClientSession started" << std::endl;
-            try{
-                auto preRes = self->GetAuthDataForRegist(jsonMqSession, ec, yield);
-                std::cout << "normal preRes" << std::endl;
-                result = preRes;
-                std::cout<< "what a hell" << std::endl;
-            } catch (std::exception& e){
-                std::cout << "wtf" << std::endl;
-            }
-            if(ec.value() == 0){
-                std::cout << "Getting data ok" << std::endl;
-                self->SendDataToDB(result);
-            }
-            else{
-                std::cout << "Getting data bed" << std::endl;
-                std::cout << ec.value() << std::endl;
+            while (true)
+            {
+                auto data = jsonMqSession.GetJson(ec, yield);
+                try{
+                    if(ec){
+                        throw std::exception();
+                    }
+                    auto typeIt = data.find("Type");
+                    if(typeIt == data.cend()){
+                        throw std::exception();
+                    }
+                    else{
+                        auto reaction = self->GetReaction(typeIt->get<std::string>());
+                        if(reaction.has_value()){
+                            reaction.value()(std::ref(jsonMqSession), self, std::ref(data), std::ref(ec), yield);
+                        }
+                        else{
+                            throw std::exception();
+                        }
+                    }
+                } catch (std::exception& ex){
+                    ec = asio::error::invalid_argument;
+                }
             }
         };
     };
-    asio::spawn(self->sysService, dataForSpawnFactory(authData));
+    asio::spawn(self->sysService, dataForSpawnFactory());
 }
 void ServerDemon::do_accept(JsonMq &jsonMqSession, boost::system::error_code &ec, asio::yield_context yield)
 {
     auto self = shared_from_this();
     jsonMqSession = JsonMq(self->sysService, self->acc, ec, yield);
-    if(ec.value() == 0){
-       std::cout << "Connection Ok" << std::endl;
-    }else{
-        std::cout << "Bad conn " << ec.message()<< std::endl;
+    if (ec.value() == 0)
+    {
+        std::cout << "Connection Ok" << std::endl;
+    }
+    else
+    {
+        std::cout << "Bad conn " << ec.message() << std::endl;
     }
 }
 
@@ -119,7 +199,8 @@ void ServerDemon::RunThread(asio::yield_context yield)
             JsonMq jsonMqSession;
             boost::system::error_code code;
             self->do_accept(jsonMqSession, code, yield);
-            if(code.value() == 0){
+            if (code.value() == 0)
+            {
                 do_clientSession(jsonMqSession, code);
             }
             boost::this_thread::interruption_point();
@@ -130,11 +211,13 @@ void ServerDemon::RunThread(asio::yield_context yield)
         return;
     }
 }
-std::shared_ptr<ServerDemon> ServerDemon::GetPtr(){
+std::shared_ptr<ServerDemon> ServerDemon::GetPtr()
+{
     return shared_from_this();
 }
 
-std::shared_ptr<ServerDemon> ServerDemon::Create(){
+std::shared_ptr<ServerDemon> ServerDemon::Create()
+{
     return std::shared_ptr<ServerDemon>(new ServerDemon(), ServerDeleter<ServerDemon>());
 }
 void ServerDemon::RunDemon()
