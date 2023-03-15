@@ -8,7 +8,7 @@
 #include <memory>
 #include <cstdint>
 #include "JsonMq.h"
-#include <mysqlx/xdevapi.h>
+#include "DBMaster.h"
 namespace asio = boost::asio;
 template <class T>
 struct ServerDeleter{
@@ -26,7 +26,7 @@ private:
     asio::ip::tcp::endpoint ep;
     asio::ip::tcp::acceptor acc;
     boost::thread_group threads;
-    mysqlx::Session sess;
+    DBMaster master;
 
 private:
     ServerDemon();

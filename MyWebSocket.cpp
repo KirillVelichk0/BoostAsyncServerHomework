@@ -20,10 +20,11 @@ std::string MyWebSocketHandler::ReadForCount(Socket_ptr sock, std::uint32_t coun
         return ""s;
     }
     std::uint32_t curCount = 0;
-    std::string result;
+    std::vector<char> result(count);
     std::cout << "Hello from MyWebSock " << count << std::endl;
     std::cout << "nonProcessed in start " << sock->nonProcessedData.size() << std::endl;
     auto client_socket = sock;
+    auto resIt = result.begin();
     if (!sock->nonProcessedData.empty())
     {
         std::cout << "PreprocData size " << sock->nonProcessedData.size() << std::endl;
@@ -31,7 +32,7 @@ std::string MyWebSocketHandler::ReadForCount(Socket_ptr sock, std::uint32_t coun
         auto bytesToRead = std::min(sz, count);
         auto sIt = client_socket->nonProcessedData.cbegin();
         curCount += bytesToRead;
-        std::copy(sIt, std::next(sIt, bytesToRead), std::back_inserter(result));
+        std::copy(sIt, std::next(sIt, bytesToRead), result.begin());
         client_socket->nonProcessedData.erase(sIt, std::next(sIt, bytesToRead));
     }
     while (curCount < count)
@@ -42,19 +43,20 @@ std::string MyWebSocketHandler::ReadForCount(Socket_ptr sock, std::uint32_t coun
         std::cout << "curCount: " << curCount << " curReaded: " << curReaded << std::endl;
         if (ec)
         {
+            std::cout << "Breaked" << std::endl;
             break;
         }
         if (curCount + curReaded > count)
         {
             auto nextDataCount = curCount + curReaded - count;
-            std::copy(client_socket->buf.cbegin(), std::next(client_socket->buf.cbegin(), count - curCount), std::back_inserter(result));
+            resIt = std::copy(client_socket->buf.cbegin(), std::next(client_socket->buf.cbegin(), count - curCount), resIt);
             std::cout << result.size() <<" " <<client_socket->nonProcessedData.size()  << std::endl;
             std::copy(client_socket->buf.cbegin(), std::next(client_socket->buf.cbegin(), nextDataCount), std::back_inserter(client_socket->nonProcessedData));
             std::cout << "nonProcessed in end " << client_socket->nonProcessedData.size() << std::endl;
         }
         else
         {
-            std::copy(client_socket->buf.cbegin(), std::next(client_socket->buf.cbegin(), curReaded), std::back_inserter(result));
+            resIt = std::copy(client_socket->buf.cbegin(), std::next(client_socket->buf.cbegin(), curReaded), resIt);
             std::cout << "nonProcessed in not end " << client_socket->nonProcessedData.size() << std::endl;
         }
         curCount += curReaded;
@@ -64,8 +66,9 @@ std::string MyWebSocketHandler::ReadForCount(Socket_ptr sock, std::uint32_t coun
     }
     std::cout <<std::endl;
     std::cout << "GoodBye from MyWebSock" << std::endl;
-    std::cout << "Result in MyWebSock " << result << std::endl;
-    return result;
+    std::string strResult = std::string(result.begin(), result.end());
+    std::cout << "Result in MyWebSock " << strResult << std::endl;
+    return strResult;
 }
 // принимает некоторой объем данных, с заголовком в виде размера в формате BigEndian на 4 байта
 std::string MyWebSocketHandler::ReadPackage(Socket_ptr sock, boost::system::error_code &ec, asio::yield_context yield)
@@ -80,6 +83,7 @@ std::string MyWebSocketHandler::ReadPackage(Socket_ptr sock, boost::system::erro
     // считаем, что заголовок нам приходит в формате bigEndian32
     auto eSz = reinterpret_cast<NetworkInt32 *>(szPackage.data());
     std::int32_t normalSize = *eSz;
+    std::cout << "Package size is " << normalSize << std::endl;
     if (normalSize > MyWebSocketHandler::maxMessageSize)
     {
         ec = asio::error::message_size;

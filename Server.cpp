@@ -13,32 +13,6 @@
 #include <tuple>
 #include <boost/coroutine/coroutine.hpp>
 using namespace std::string_literals;
-auto GetMySqlDataFromJson()
-{
-    std::tuple<std::string, std::int32_t, std::string, std::string> result;
-    using json = nlohmann::json;
-    std::ifstream istr("../configs/mySqlDbConfig.json");
-    std::cout << "startParsing" << std::endl;
-    json sqlConfJson = json::parse(istr);
-    std::cout << "first config parsed" << std::endl;
-    istr.close();
-    std::get<0>(result) = sqlConfJson["hostName"].get<std::string>();
-    std::get<1>(result) = sqlConfJson["port"].get<std::int32_t>();
-    std::get<2>(result) = sqlConfJson["user"].get<std::string>();
-    std::string pathToPassword = sqlConfJson["pathToPasswordFile"].get<std::string>();
-    istr.open(pathToPassword);
-    json dbPassword = json::parse(istr);
-    istr.close();
-    std::get<3>(result) = dbPassword["password"].get<std::string>();
-    return result;
-}
-auto BuildMySqlSessionFromJsonConfig()
-{
-    auto data = GetMySqlDataFromJson();
-    auto [host, port, user, password] = data;
-    mysqlx::Session result(host.c_str(), port, user.c_str(), password.c_str());
-    return result;
-}
 std::int32_t ParseVectorToInt32(const std::vector<char> &data)
 {
     std::int32_t result;
@@ -59,25 +33,8 @@ std::string utf8_to_string(const char *utf8str, const std::locale& loc)
 }
 void ServerDemon::SendDataToDB(const std::pair<std::string, std::string> &data)
 {
-    using namespace mysqlx;
-    std::string hashed(32, 'a');
-    std::cout << "startSending" << std::endl;
-    SHA256(reinterpret_cast<const unsigned char *>(data.second.data()), data.second.size(), reinterpret_cast<unsigned char *>(hashed.data()));
-    std::cout << "SHA is ok" << std::endl;
-    Schema db = sess.getSchema("IBSystems");
-    Table myColl = db.getTable("passcont");
-    mysqlx::string login = data.first;
-    mysqlx::bytes finalHash = hashed.c_str();
-
-    //auto login = utf8_to_string(data.first.c_str(), std::locale("en_US.UTF-8"));
-    //hashed = utf8_to_string(hashed.c_str(), std::locale("en_US.UTF-8"));
-    std::cout << "Finally" << std::endl;
-    try{
-        std::cout << data.first.c_str() << " " << hashed.c_str() << std::endl;
-        myColl.insert("uid", "login", "passH").values(0, login, finalHash).execute();
-    } catch (std::exception& err){
-        std::cout << "Uncorrect locale" << std::endl;
-    }
+    auto self = shared_from_this();
+    self->master.SendRegistrDataToDB(data);
     
 }
 std::pair<std::string, std::string> ServerDemon::GetAuthDataForRegist(JsonMq &jsonMqSession, boost::system::error_code &ec, asio::yield_context yield)
@@ -151,7 +108,7 @@ void ServerDemon::do_accept(JsonMq &jsonMqSession, boost::system::error_code &ec
     }
 }
 
-ServerDemon::ServerDemon() : ep(asio::ip::tcp::v4(), 2001), acc(sysService, ep), sess(BuildMySqlSessionFromJsonConfig()) {}
+ServerDemon::ServerDemon() : ep(asio::ip::tcp::v4(), 2001), acc(sysService, ep) {}
 void ServerDemon::RunThread(asio::yield_context yield)
 {
     try
