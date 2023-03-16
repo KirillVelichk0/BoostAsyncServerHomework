@@ -27,8 +27,10 @@ JsonMq& JsonMq::operator=(const JsonMq &another){
 }
 JsonMq& JsonMq::operator=(JsonMq &&another) = default;
 Json JsonMq::GetJson(boost::system::error_code &ec, asio::yield_context yield) const {
+    std::cout << "Getting Json started" << std::endl;
     Json result;
     MyWebSocketHandler handler;
+    std::cout << "Is socket open " << this->impl->socket->socket.is_open() << std::endl;
     auto strJson = handler.ReadPackage(this->impl->socket, ec, yield);
     if(ec.value()== 0){
         std::cout << "Str is normal. Called from GetJson" << std::endl;
@@ -54,7 +56,15 @@ Json JsonMq::GetJson(boost::system::error_code &ec, asio::yield_context yield) c
     return result;
 }
 void JsonMq::SendJson(const Json &jsonData, boost::system::error_code &ec, asio::yield_context yield) const{
-    std::string jsonStr = jsonData.dump();
+    std::cout << "Sending json started in JsonMq" << std::endl;
+    std::string jsonStr;
+    try{
+        jsonStr = jsonData.dump();
+    } catch (std::exception& ex){
+        std::cout << "dump error" << std::endl;
+    }
+    std::cout << "Json dumped" << std::endl;
     MyWebSocketHandler handler;
     handler.SendPackage(this->impl->socket, jsonStr, ec, yield);
+    std::cout << "Json sended" << std::endl;
 }

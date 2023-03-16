@@ -32,7 +32,7 @@ std::string MyWebSocketHandler::ReadForCount(Socket_ptr sock, std::uint32_t coun
         auto bytesToRead = std::min(sz, count);
         auto sIt = client_socket->nonProcessedData.cbegin();
         curCount += bytesToRead;
-        std::copy(sIt, std::next(sIt, bytesToRead), result.begin());
+        resIt = std::copy(sIt, std::next(sIt, bytesToRead), resIt);
         client_socket->nonProcessedData.erase(sIt, std::next(sIt, bytesToRead));
     }
     while (curCount < count)
@@ -51,7 +51,7 @@ std::string MyWebSocketHandler::ReadForCount(Socket_ptr sock, std::uint32_t coun
             auto nextDataCount = curCount + curReaded - count;
             resIt = std::copy(client_socket->buf.cbegin(), std::next(client_socket->buf.cbegin(), count - curCount), resIt);
             std::cout << result.size() <<" " <<client_socket->nonProcessedData.size()  << std::endl;
-            std::copy(client_socket->buf.cbegin(), std::next(client_socket->buf.cbegin(), nextDataCount), std::back_inserter(client_socket->nonProcessedData));
+            std::copy(std::next(client_socket->buf.cbegin(), count - curCount), std::next(client_socket->buf.cbegin(), curReaded), std::back_inserter(client_socket->nonProcessedData));
             std::cout << "nonProcessed in end " << client_socket->nonProcessedData.size() << std::endl;
         }
         else
@@ -105,11 +105,17 @@ void MyWebSocketHandler::SendPackage(Socket_ptr sock, std::string data, boost::s
         ec = asio::error::message_size;
         return;
     }
+    std::int32_t sz = 4 + data.size();
     std::vector<char> buffer(4 + data.size());
     NetworkInt32 eSz = data.size();
-    std::memcpy(buffer.data(), &eSz, 4);
+    std::memcpy(buffer.data(), eSz.data(), 4);
     auto it = std::next(buffer.begin(), 4);
     decltype(auto) pos = *it;
     std::memcpy(&pos, data.data(), data.size());
-    asio::async_write(sock->socket, asio::buffer(buffer), yield[ec]);
+    std::int32_t count = 0;
+    while(count < sz){
+        auto sendedBytes = asio::async_write(sock->socket, asio::buffer(buffer), yield[ec]);
+        count += sendedBytes;
+    }
+    std::cout << "Sending data end in socket" << std::endl;
 }

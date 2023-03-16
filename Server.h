@@ -37,7 +37,7 @@ private:
     ServerDemon();
     //функция не должна быть блокируемой или являться корутиной.
     //Она просто порождает контекст дальнейшей работы
-    void do_clientSession(JsonMq& jsonMqSession, boost::system::error_code&);
+    void do_clientSession(JsonMq&& jsonMqSession);
     void do_accept(JsonMq& jsonMqSession, boost::system::error_code&, asio::yield_context yield);
     void RunThread(asio::yield_context yield);
 public:
