@@ -2,7 +2,6 @@
 #include <algorithm>
 #include <sstream>
 #include <iostream>
-#include <base64_rfc4648.hpp>
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <codecvt>
@@ -13,38 +12,9 @@
 #include <iostream>
 #include <cstdint>
 #include <tuple>
+#include "JsonMaster.h"
 #include <boost/coroutine/coroutine.hpp>
 using namespace std::string_literals;
-using base64Url = cppcodec::base64_rfc4648;
-std::pair<std::string, std::string> ServerDemon::GetAuthDataForRegist(Json &jsonData, boost::system::error_code &ec, asio::yield_context yield)
-{
-    std::pair<std::string, std::string> result;
-    try
-    {
-        auto login = jsonData.find("username");
-        auto password = jsonData.find("password");
-        std::cout << "finded" << std::endl;
-        if (login == jsonData.cend() || password == jsonData.cend())
-        {
-            ec = asio::error::invalid_argument;
-            std::cout << "bad" << std::endl;
-        }
-        else
-        {
-            std::cout << "Json linking" << std::endl;
-            result.first = login->get<std::string>();
-            result.second = password->get<std::string>();
-            std::cout << "Json linked" << std::endl;
-            std::cout << result.first << " " << result.second << std::endl;
-        }
-        return result;
-    }
-    catch (std::exception &ex)
-    {
-        ec = asio::error::invalid_argument;
-        return result;
-    }
-}
 auto &ServerDemon::GetDbSession()
 {
     return this->master;
@@ -60,9 +30,14 @@ std::map<std::string, CallableReaction> ConstructReacions()
             {
                 try
                 {
-                    auto registrData = sharedContext->GetAuthDataForRegist(data.get(), ec, yield);
-                    auto &dbSession = sharedContext->GetDbSession();
-                    dbSession.SendRegistrDataToDB(registrData);
+                    auto registrData = FromJson<RegistrData>(data.get());
+                    if (registrData.has_value())
+                    {
+                        sharedContext->GetDbSession().SendRegistrDataToDB(registrData.value());
+                    }
+                    else{
+                        throw std::exception();
+                    }
                 }
                 catch (std::exception &ex)
                 {
@@ -78,26 +53,21 @@ std::map<std::string, CallableReaction> ConstructReacions()
             auto sharedContext = serverSession.lock();
             if (sharedContext != nullptr)
             {
-                std::pair<std::string, std::string> result;
                 try
                 {
-                    auto login = data.get().find("username");
-                    if (login == data.get().cend())
+                    auto wordRequest = FromJson<KeyWordRequest>(data.get());
+                    if (wordRequest.has_value())
                     {
-                        ec.get() = asio::error::invalid_argument;
-                        std::cout << "bad" << std::endl;
+                        auto keyWord = sharedContext->GetDbSession().GetWordFromDb(wordRequest.value());
+                        KeyWord answer{keyWord : keyWord};
+                        Json jAnswer = ToJson(answer);
+                        jsonSession.get().SendJson(jAnswer, ec, yield);
                     }
-                    else
-                    {
-                        auto word = sharedContext->GetDbSession().GetWordFromDb(login->get<std::string>());
-                        Json dataToSend;
-                        std::string wordBase64 = base64Url::encode(word);
-                        dataToSend["KeyWord"] = wordBase64;
-                        std::cout << "Json from reaction\n" << dataToSend.dump() << std::endl;
-                        jsonSession.get().SendJson(dataToSend, ec.get(), yield);
+                    else{
+                        throw std::exception();
                     }
                 }
-                catch (std::exception &ex)
+                catch (std::exception &e)
                 {
                     ec.get() = asio::error::invalid_argument;
                 }
@@ -113,40 +83,23 @@ std::map<std::string, CallableReaction> ConstructReacions()
             {
                 try
                 {
-                    auto login = data.get().find("username");
-                    auto hash = data.get().find("hash");
-                    if (login == data.get().cend() || hash == data.get().cend())
-                    {
-                        ec.get() = asio::error::invalid_argument;
-                        std::cout << "bad" << std::endl;
+                    auto authData = FromJson<AuthData>(data.get());
+                    if(authData.has_value()){
+                        bool compareResult = sharedContext->GetDbSession().CompareSendedAuthDataWithDb(authData.value());
+                        AuthDataAnswer answer;
+                        if(compareResult){
+                            answer.passed = "Passed";
+                        }
+                        else{
+                            answer.passed = "Not Passed";
+                        }
+                        auto jAnswer = ToJson(answer);
+                        jsonSession.get().SendJson(jAnswer, ec.get(), yield);
                     }
-                    else
-                    {
-                        std::cout << "encodedHash " << hash->get<std::string>() << std::endl;
-                        std::string hashStrDecoded;
-                        try{
-                        auto decodedHash= base64Url::decode(hash->get<std::string>());
-                        std::cout << "Decoded" << std::endl;
-                        hashStrDecoded = std::string(decodedHash.cbegin(), decodedHash.cend());
-                        } catch(std::exception& e){
-                            std::cout << "Bade decode" << std::endl;
-                        }
-                        std::cout << hashStrDecoded << std::endl;
-                        auto isEq = sharedContext->GetDbSession().CompareSendedAuthDataWithDb(std::make_pair(login->get<std::string>(), hashStrDecoded));
-                        Json answer;
-                        std::string state;
-                        if (isEq)
-                        {
-                            state = "Passed";
-                        }
-                        else
-                        {
-                            state = "Not Passed";
-                        }
-                        std::cout << "Auth state " << state << std::endl;
-                        answer["AuthResult"] = state;
-                        jsonSession.get().SendJson(answer, ec.get(), yield);
-                    };
+                    else{
+                        throw std::exception();
+                    }
+                   
                 }
                 catch (std::exception &ex)
                 {
@@ -169,12 +122,12 @@ std::optional<CallableReaction> ServerDemon::GetReaction(const std::string &requ
     }
     return result;
 }
-void ServerDemon::do_clientSession(JsonMq&& jsonMqSession)
+void ServerDemon::do_clientSession(JsonMq &&jsonMqSession)
 {
     auto self = shared_from_this();
-    auto dataForSpawnFactory = [self,  jsonMqSession = std::move(jsonMqSession)]()
+    auto dataForSpawnFactory = [self, jsonMqSession = std::move(jsonMqSession)]()
     {
-        return [self,jsonMqSession = std::move(jsonMqSession)](asio::yield_context yield) mutable
+        return [self, jsonMqSession = std::move(jsonMqSession)](asio::yield_context yield) mutable
         {
             boost::system::error_code ec;
             while (true)

@@ -3,6 +3,7 @@
 #include <openssl/sha.h>
 #include <openssl/rand.h>
 #include <fstream>
+#include <base64_rfc4648.hpp>
 auto GetMySqlDataFromJson()
 {
     std::tuple<std::string, std::int32_t, std::string, std::string> result;
@@ -30,24 +31,24 @@ auto BuildMySqlSessionFromJsonConfig()
     return result;
 }
 DBMaster::DBMaster() : sess(BuildMySqlSessionFromJsonConfig()) {}
-void DBMaster::SendRegistrDataToDB(const std::pair<std::string, std::string> &data)
+void DBMaster::SendRegistrDataToDB(const RegistrData &data)
 {
     using namespace mysqlx;
     std::string hashed(32, 'a');
     std::cout << "startSending" << std::endl;
     std::string word(32, 'a');
     RAND_bytes(reinterpret_cast<unsigned char *>(word.data()), 32);
-    SHA256(reinterpret_cast<const unsigned char *>(data.second.data()), data.second.size(), reinterpret_cast<unsigned char *>(hashed.data()));
+    SHA256(reinterpret_cast<const unsigned char *>(data.password.data()), data.password.size(), reinterpret_cast<unsigned char *>(hashed.data()));
     std::cout << "SHA is ok" << std::endl;
     Schema db = sess.getSchema("IBSystems");
     Table myColl = db.getTable("passcont");
-    mysqlx::string login = data.first;
+    mysqlx::string login = data.login;
     mysqlx::bytes finalHash = hashed.c_str();
     mysqlx::bytes wordKey(word.c_str());
     std::cout << "Finally" << std::endl;
     try
     {
-        std::cout << data.first.c_str() << " " << hashed.c_str() << std::endl;
+        std::cout << data.login.c_str() << " " << hashed.c_str() << std::endl;
         myColl.insert("uid", "login", "passH", "WordKey").values(0, login, finalHash, wordKey).execute();
     }
     catch (std::exception &err)
@@ -55,14 +56,14 @@ void DBMaster::SendRegistrDataToDB(const std::pair<std::string, std::string> &da
         std::cout << "Uncorrect locale" << std::endl;
     }
 }
-std::string DBMaster::GetWordFromDb(std::string login)
+std::string DBMaster::GetWordFromDb(const KeyWordRequest& keyRequest)
 {
     std::string result;
     using namespace mysqlx;
     Schema db = sess.getSchema("IBSystems");
     Table myColl = db.getTable("passcont");
-    mysqlx::string mLogin(login);
-    auto opResult = myColl.select("WordKey").where("login = :login").bind("login", login).execute();
+    mysqlx::string mLogin(keyRequest.login);
+    auto opResult = myColl.select("WordKey").where("login = :login").bind("login", keyRequest.login).execute();
     if (opResult.count() != 0)
     {
         auto val = *opResult.begin();
@@ -70,13 +71,13 @@ std::string DBMaster::GetWordFromDb(std::string login)
     }
     return result;
 }
-bool DBMaster::CompareSendedAuthDataWithDb(const std::pair<std::string, std::string> &data)
+bool DBMaster::CompareSendedAuthDataWithDb(const AuthData &data)
 {
     bool isOk = false;
     using namespace mysqlx;
     Schema db = sess.getSchema("IBSystems");
     Table myColl = db.getTable("passcont");
-    mysqlx::string login(data.first);
+    mysqlx::string login(data.login);
     auto opResult = myColl.select("passH", "WordKey").where("login = :login").bind("login", login).execute();
     auto hashWithSalting = [](const char *salt, std::size_t salt_length, const char *input, std::size_t length, char *md)
     {
@@ -105,7 +106,9 @@ bool DBMaster::CompareSendedAuthDataWithDb(const std::pair<std::string, std::str
         std::string hash(32, 'a');
         bool isOpOk = hashWithSalting(containedWord.c_str(), containedWord.size(), containedHash.c_str(), containedHash.size(), hash.data());
         if(isOpOk){
-            isOk = (hash == data.second);
+            std::cout << hash << std::endl;
+            std::cout << data.hash << std::endl;
+            isOk = (hash == data.hash);
         }
     }
     return isOk;

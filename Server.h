@@ -41,7 +41,6 @@ private:
     void do_accept(JsonMq& jsonMqSession, boost::system::error_code&, asio::yield_context yield);
     void RunThread(asio::yield_context yield);
 public:
-    std::pair<std::string, std::string> GetAuthDataForRegist(Json& jsonMqSession, boost::system::error_code&, asio::yield_context yield);
     auto& GetDbSession();
     static std::shared_ptr<ServerDemon> Create();
     std::shared_ptr<ServerDemon> GetPtr();
