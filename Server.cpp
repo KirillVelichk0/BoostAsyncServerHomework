@@ -33,6 +33,7 @@ std::map<std::string, CallableReaction> ConstructReacions()
                     auto registrData = FromJson<RegistrData>(data.get());
                     if (registrData.has_value())
                     {
+                        std::cout << "Sending to db from reaction" << std::endl;
                         sharedContext->GetDbSession().SendRegistrDataToDB(registrData.value());
                     }
                     else{
