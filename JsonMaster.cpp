@@ -1,7 +1,8 @@
 #include "JsonMaster.h"
-#include <base64_rfc4648.hpp>
+#include <base64_url.hpp>
 #include <iostream>
-using Base64Url = cppcodec::base64_rfc4648;
+
+using Base64Url = cppcodec::base64_url;
 auto FromVecToString(const std::vector<uint8_t> &data)
 {
     return std::string(data.cbegin(), data.cend());
