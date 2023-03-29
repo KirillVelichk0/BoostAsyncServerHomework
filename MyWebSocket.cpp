@@ -1,5 +1,6 @@
 #include "MyWebSocket.h"
 #include <boost/endian.hpp>
+#include <openssl/err.h>
 #include <iostream>
 #include <openssl/rsa.h>
 #include <openssl/rand.h>
@@ -7,107 +8,201 @@
 #include <openssl/sha.h>
 #include <tuple>
 using namespace std::string_literals;
-//S, Nonce, OpenKey
-using AuthTriplet = std::tuple<std::string,std::string, std::string>;
+// S, Nonce, OpenKey
+using AuthTriplet = std::tuple<std::string, std::string, std::string>;
 
-std::string RsaPriEncrypt(const std::string &clear_text, std::string &pri_key)
+
+std::string RsaPubDecrypt(const std::string & cipher_text, const std::string & pub_key)
 {
-	std::string encrypt_text;
-	BIO *keybio = BIO_new_mem_buf((unsigned char *)pri_key.c_str(), -1);
-	RSA* rsa = RSA_new();
-	rsa = PEM_read_bio_RSAPrivateKey(keybio, &rsa, NULL, NULL);
+	std::string decrypt_text;
+	BIO *keybio = BIO_new_mem_buf((unsigned char *)pub_key.c_str(), -1);
+	RSA *rsa = RSA_new();
+	
+	 // Note--------Use the public key in the first format for decryption
+	//rsa = PEM_read_bio_RSAPublicKey(keybio, &rsa, NULL, NULL);
+	 // Note--------Use the public key in the second format for decryption (we use this format as an example)
+	rsa = PEM_read_bio_RSA_PUBKEY(keybio, &rsa, NULL, NULL);
 	if (!rsa)
 	{
+		 unsigned long err = ERR_get_error(); //Get the error number
+		char err_msg[1024] = { 0 };
+                 ERR_error_string(err, err_msg); // Format: error:errId: library: function: reason
+		printf("err msg: err:%ld, msg:%s\n", err, err_msg);
 		BIO_free_all(keybio);
-		return std::string("");
+        return "";
 	}
  
-	 // Get the maximum length of data that RSA can process at a time
 	int len = RSA_size(rsa);
- 
-	 // Apply for memory: store encrypted ciphertext data
 	char *text = new char[len + 1];
 	memset(text, 0, len + 1);
- 
-	 // Encrypt the data with a private key (the return value is the length of the encrypted data)
-	int ret = RSA_private_encrypt(clear_text.length(), (const unsigned char*)clear_text.c_str(), (unsigned char*)text, rsa, RSA_PKCS1_PADDING);
+	 // Decrypt the ciphertext
+	int ret = RSA_public_decrypt(cipher_text.length(), (const unsigned char*)cipher_text.c_str(), (unsigned char*)text, rsa, RSA_PKCS1_PADDING);
 	if (ret >= 0) {
-		encrypt_text = std::string(text, ret);
+		decrypt_text.append(std::string(text, ret));
 	}
  
 	 // release memory  
-	free(text);
+	delete text;
 	BIO_free_all(keybio);
 	RSA_free(rsa);
  
-	return encrypt_text;
+	return decrypt_text;
 }
-void GenerateRSAKey(std::string & out_pub_key, std::string & out_pri_key)
+
+bool CheckTriplet(const AuthTriplet& triplet){
+    auto& [s, nonce, openKey] = triplet;
+    unsigned char hash_buf[32];
+    SHA256((const unsigned char*)nonce.data(), 32, hash_buf);
+    std::string decrypted = RsaPubDecrypt(s, openKey);
+    //если расшифровка по той или иной причине не корректна, вернется пустая строка
+    //и последняя проверка все обработает
+    return decrypted.data() == (const char*)hash_buf;
+}
+
+std::string RsaPriEncrypt(const std::string &clear_text, std::string &pri_key)
 {
-	size_t pri_len = 0; // Private key length
-	size_t pub_len = 0; // public key length
-	 char *pri_key = nullptr; // private key
-	 char *pub_key = nullptr; // public key
- 
-	 // Generate key pair
-	RSA *keypair = RSA_generate_key(2048, RSA_3, NULL, NULL);
- 
-	BIO *pri = BIO_new(BIO_s_mem());
-	BIO *pub = BIO_new(BIO_s_mem());
- 
-         // Generate private key
-	PEM_write_bio_RSAPrivateKey(pri, keypair, NULL, NULL, 0, NULL, NULL);
-         // Note------Generate the public key in the first format
-    //PEM_write_bio_RSAPublicKey(pub, keypair);
-         // Note------Generate the public key in the second format (this is used in the code here)
-	PEM_write_bio_RSA_PUBKEY(pub, keypair);
+    std::string encrypt_text;
+    BIO *keybio = BIO_new_mem_buf((unsigned char *)pri_key.c_str(), -1);
+    RSA *rsa = RSA_new();
+    rsa = PEM_read_bio_RSAPrivateKey(keybio, &rsa, NULL, NULL);
+    if (!rsa)
+    {
+        BIO_free_all(keybio);
+        return std::string("");
+    }
+
+    // Get the maximum length of data that RSA can process at a time
+    int len = RSA_size(rsa);
+
+    // Apply for memory: store encrypted ciphertext data
+    char *text = new char[len + 1];
+    memset(text, 0, len + 1);
+
+    // Encrypt the data with a private key (the return value is the length of the encrypted data)
+    int ret = RSA_private_encrypt(clear_text.length(), (const unsigned char *)clear_text.c_str(), (unsigned char *)text, rsa, RSA_PKCS1_PADDING);
+    if (ret >= 0)
+    {
+        encrypt_text = std::string(text, ret);
+    }
+
+    // release memory
+    free(text);
+    BIO_free_all(keybio);
+    RSA_free(rsa);
+
+    return encrypt_text;
+}
+void GenerateRSAKey(std::string &out_pub_key, std::string &out_pri_key)
+{
+    size_t pri_len = 0;      // Private key length
+    size_t pub_len = 0;      // public key length
+    char *pri_key = nullptr; // private key
+    char *pub_key = nullptr; // public key
+
+    // Generate key pair
+    RSA *keypair = RSA_generate_key(2048, RSA_3, NULL, NULL);
+
+    BIO *pri = BIO_new(BIO_s_mem());
+    BIO *pub = BIO_new(BIO_s_mem());
+
+    // Generate private key
+    PEM_write_bio_RSAPrivateKey(pri, keypair, NULL, NULL, 0, NULL, NULL);
+    // Note------Generate the public key in the first format
+    // PEM_write_bio_RSAPublicKey(pub, keypair);
+    //  Note------Generate the public key in the second format (this is used in the code here)
+    PEM_write_bio_RSA_PUBKEY(pub, keypair);
 
     pri_len = BIO_pending(pri);
-	pub_len = BIO_pending(pub);
- 
-	 // The key pair reads the string  
-	pri_key = (char *)malloc(pri_len + 1);
-	pub_key = (char *)malloc(pub_len + 1);
+    pub_len = BIO_pending(pub);
+
+    // The key pair reads the string
+    pri_key = (char *)malloc(pri_len + 1);
+    pub_key = (char *)malloc(pub_len + 1);
 
     BIO_read(pri, pri_key, pri_len);
-	BIO_read(pub, pub_key, pub_len);
- 
-	pri_key[pri_len] = '\0';
-	pub_key[pub_len] = '\0';
- 
-	out_pub_key = pub_key;
-	out_pri_key = pri_key;
+    BIO_read(pub, pub_key, pub_len);
+
+    pri_key[pri_len] = '\0';
+    pub_key[pub_len] = '\0';
+
+    out_pub_key = pub_key;
+    out_pri_key = pri_key;
 
     RSA_free(keypair);
-	BIO_free_all(pub);
-	BIO_free_all(pri);
- 
-	free(pri_key);
-	free(pub_key);
+    BIO_free_all(pub);
+    BIO_free_all(pri);
+
+    free(pri_key);
+    free(pub_key);
 }
 
-auto GenTriplet(){
+auto GenTriplet()
+{
     AuthTriplet result;
-    auto& [s, nonce, openKey] = result;
+    auto &[s, nonce, openKey] = result;
     unsigned char nonceBuf[32];
     RAND_bytes(nonceBuf, 32);
-    nonce = std::string(reinterpret_cast<char*>(nonceBuf), 32);
+    nonce = std::string(reinterpret_cast<char *>(nonceBuf), 32);
     std::string closeKey;
 
     GenerateRSAKey(openKey, closeKey);
     unsigned char hash_buf[32];
     SHA256(nonceBuf, 32, hash_buf);
-    s = RsaPriEncrypt(std::string((char*)hash_buf, 32), closeKey);
+    s = RsaPriEncrypt(std::string((char *)hash_buf, 32), closeKey);
     return result;
+}
+void SendTriplet(const AuthTriplet& serverTriplet, Socket_ptr sock, boost::system::error_code &code, asio::yield_context context){
+    MyWebSocketHandler handler;
+    auto& [s, nonce, openKey] = serverTriplet;
+    std::size_t count = 0;
+    auto buf = asio::buffer(nonce);
+    handler.SendPackage(sock, s, code, context);
+    if(code.value() != 0){
+            return;
+    }
+    while (count < nonce.size())
+    {
+        auto sendedBytes = asio::async_write(sock->socket, buf, context[code]);
+        if(code.value() != 0){
+            return;
+        }
+        count += sendedBytes;
+    }
+    handler.SendPackage(sock, openKey, code, context);
 }
 std::unique_ptr<Client> ConstructSocket(asio::io_service &sysService)
 {
     return std::make_unique<Client>(Client{.socket = asio::ip::tcp::socket(sysService)});
 }
-
+AuthTriplet Wait_Triplet(Socket_ptr sock, boost::system::error_code &code, asio::yield_context context)
+{
+    AuthTriplet result;
+    MyWebSocketHandler handler;
+    auto &[s, nonce, openKey] = result;
+    s= handler.ReadPackage(sock, code, context);
+    if(code.value() != 0){
+        return result;
+    }
+    nonce = handler.ReadForCount(sock, 32, code, context);
+    if(code.value() != 0){
+        return result;
+    }
+    openKey = handler.ReadPackage(sock, code, context);
+    return result;
+}
 void MyWebSocketHandler::AsyncAccept(Socket_ptr sock, asio::ip::tcp::acceptor &acc, boost::system::error_code &code, asio::yield_context context)
 {
     acc.async_accept(sock->socket, context[code]);
+    auto client_triplet = Wait_Triplet(sock, code, context);
+    if(code.value() != 0 || !CheckTriplet(client_triplet)){
+        code = boost::asio::error::invalid_argument;
+        std::cout << "Check triplet bad" << std::endl;
+        return;
+    }
+    std::cout << "Triplet is ok!" << std::endl;
+    auto serverTriplet = GenTriplet();
+    SendTriplet(serverTriplet, sock, code, context);
+    std::cout << "Server triplet sended" << std::endl;
 
 }
 // гарантирует прием данных данного размера.
@@ -136,9 +231,9 @@ std::string MyWebSocketHandler::ReadForCount(Socket_ptr sock, std::uint32_t coun
     }
     while (curCount < count)
     {
-        std::cout << result.size() <<" " <<client_socket->nonProcessedData.size()<< std::endl;
+        std::cout << result.size() << " " << client_socket->nonProcessedData.size() << std::endl;
         auto curReaded = client_socket->socket.async_read_some(asio::buffer(client_socket->buf), yield[ec]);
-        std::cout << result.size() <<" " <<client_socket->nonProcessedData.size() << std::endl;
+        std::cout << result.size() << " " << client_socket->nonProcessedData.size() << std::endl;
         std::cout << "curCount: " << curCount << " curReaded: " << curReaded << std::endl;
         if (ec)
         {
@@ -149,7 +244,7 @@ std::string MyWebSocketHandler::ReadForCount(Socket_ptr sock, std::uint32_t coun
         {
             auto nextDataCount = curCount + curReaded - count;
             resIt = std::copy(client_socket->buf.cbegin(), std::next(client_socket->buf.cbegin(), count - curCount), resIt);
-            std::cout << result.size() <<" " <<client_socket->nonProcessedData.size()  << std::endl;
+            std::cout << result.size() << " " << client_socket->nonProcessedData.size() << std::endl;
             std::copy(std::next(client_socket->buf.cbegin(), count - curCount), std::next(client_socket->buf.cbegin(), curReaded), std::back_inserter(client_socket->nonProcessedData));
             std::cout << "nonProcessed in end " << client_socket->nonProcessedData.size() << std::endl;
         }
@@ -160,10 +255,11 @@ std::string MyWebSocketHandler::ReadForCount(Socket_ptr sock, std::uint32_t coun
         }
         curCount += curReaded;
     }
-    for(int i = 0; i < client_socket->nonProcessedData.size(); i++){
+    for (int i = 0; i < client_socket->nonProcessedData.size(); i++)
+    {
         std::cout << client_socket->nonProcessedData[i];
     }
-    std::cout <<std::endl;
+    std::cout << std::endl;
     std::cout << "GoodBye from MyWebSock" << std::endl;
     std::string strResult = std::string(result.begin(), result.end());
     std::cout << "Result in MyWebSock " << strResult << std::endl;
@@ -212,8 +308,13 @@ void MyWebSocketHandler::SendPackage(Socket_ptr sock, std::string data, boost::s
     decltype(auto) pos = *it;
     std::memcpy(&pos, data.data(), data.size());
     std::int32_t count = 0;
-    while(count < sz){
-        auto sendedBytes = asio::async_write(sock->socket, asio::buffer(buffer), yield[ec]);
+    auto buf = asio::buffer(buffer);
+    while (count < sz)
+    {
+        auto sendedBytes = asio::async_write(sock->socket, buf, yield[ec]);
+        if(ec.value() != 0){
+            return;
+        }
         count += sendedBytes;
     }
     std::cout << "Sending data end in socket" << std::endl;
