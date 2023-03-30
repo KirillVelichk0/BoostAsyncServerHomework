@@ -12,9 +12,9 @@ using namespace std::string_literals;
 using AuthTriplet = std::tuple<std::string, std::string, std::string>;
 
 
-std::string RsaPubDecrypt(const std::string & cipher_text, const std::string & pub_key)
+bool RsaVerify(const std::string & cipher_text, const std::string& etalon,
+ const std::string & pub_key)
 {
-	std::string decrypt_text;
 	BIO *keybio = BIO_new_mem_buf((unsigned char *)pub_key.c_str(), -1);
 	RSA *rsa = RSA_new();
 	
@@ -24,39 +24,42 @@ std::string RsaPubDecrypt(const std::string & cipher_text, const std::string & p
 	rsa = PEM_read_bio_RSA_PUBKEY(keybio, &rsa, NULL, NULL);
 	if (!rsa)
 	{
+        std::cout << "Bad openFormat" << std::endl;
 		 unsigned long err = ERR_get_error(); //Get the error number
 		char err_msg[1024] = { 0 };
                  ERR_error_string(err, err_msg); // Format: error:errId: library: function: reason
 		printf("err msg: err:%ld, msg:%s\n", err, err_msg);
 		BIO_free_all(keybio);
-        return "";
+        return false;
 	}
  
-	int len = RSA_size(rsa);
-	char *text = new char[len + 1];
-	memset(text, 0, len + 1);
 	 // Decrypt the ciphertext
-	int ret = RSA_public_decrypt(cipher_text.length(), (const unsigned char*)cipher_text.c_str(), (unsigned char*)text, rsa, RSA_PKCS1_PADDING);
-	if (ret >= 0) {
-		decrypt_text.append(std::string(text, ret));
+	int ret = RSA_verify(NID_sha256, (const unsigned char*) etalon.data(),
+    etalon.size(), (const unsigned char*) cipher_text.data(), cipher_text.size(), rsa);
+	if (ret > 0) {
+        std::cout << "Ver is really nice!" << std::endl;
+		return true;
 	}
+    else{
+        unsigned long err = ERR_get_error(); //Get the error number
+		char err_msg[1024] = { 0 };
+                 ERR_error_string(err, err_msg); // Format: error:errId: library: function: reason
+		printf("err msg: err:%ld, msg:%s\n", err, err_msg);
+    }
  
 	 // release memory  
-	delete text;
 	BIO_free_all(keybio);
 	RSA_free(rsa);
  
-	return decrypt_text;
+	return false;
 }
 
 bool CheckTriplet(const AuthTriplet& triplet){
     auto& [s, nonce, openKey] = triplet;
-    unsigned char hash_buf[32];
-    SHA256((const unsigned char*)nonce.data(), 32, hash_buf);
-    std::string decrypted = RsaPubDecrypt(s, openKey);
-    //если расшифровка по той или иной причине не корректна, вернется пустая строка
-    //и последняя проверка все обработает
-    return decrypted.data() == (const char*)hash_buf;
+    unsigned char hashBuf[32];
+    SHA256((const unsigned char*)nonce.data(), nonce.size(), hashBuf);
+    auto hashedStr = std::string((const char*)hashBuf, 32);
+    return RsaVerify(s, hashedStr, openKey);
 }
 
 std::string RsaPriEncrypt(const std::string &clear_text, std::string &pri_key)
