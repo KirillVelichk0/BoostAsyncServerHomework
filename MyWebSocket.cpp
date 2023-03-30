@@ -62,38 +62,45 @@ bool CheckTriplet(const AuthTriplet& triplet){
     return RsaVerify(s, hashedStr, openKey);
 }
 
-std::string RsaPriEncrypt(const std::string &clear_text, std::string &pri_key)
+std::string RsaPriSign(const std::string &clear_text, std::string &pri_key)
 {
-    std::string encrypt_text;
     BIO *keybio = BIO_new_mem_buf((unsigned char *)pri_key.c_str(), -1);
     RSA *rsa = RSA_new();
     rsa = PEM_read_bio_RSAPrivateKey(keybio, &rsa, NULL, NULL);
     if (!rsa)
     {
         BIO_free_all(keybio);
+        RSA_free(rsa);
+        std::cout << "Bad private" << std::endl;
         return std::string("");
     }
 
     // Get the maximum length of data that RSA can process at a time
-    int len = RSA_size(rsa);
 
     // Apply for memory: store encrypted ciphertext data
-    char *text = new char[len + 1];
-    memset(text, 0, len + 1);
-
+    unsigned char *text = (unsigned char*) malloc(RSA_size(rsa));
+    unsigned int len;
+    std::cout << "MOMENT!" << std::endl;
     // Encrypt the data with a private key (the return value is the length of the encrypted data)
-    int ret = RSA_private_encrypt(clear_text.length(), (const unsigned char *)clear_text.c_str(), (unsigned char *)text, rsa, RSA_PKCS1_PADDING);
-    if (ret >= 0)
+    int ret = RSA_sign(NID_sha256,(unsigned char*) clear_text.data(), 32, 
+        text, &len, rsa);
+        
+    if (ret > 0)
     {
-        encrypt_text = std::string(text, ret);
+        std::cout << "All signed" << std::endl;
+        auto result =std::string((char*)text, len);
+        free(text);
+        BIO_free_all(keybio);
+        RSA_free(rsa);
+        return result;
     }
-
+    std::cout << "Bad signed" << std::endl;
     // release memory
     free(text);
     BIO_free_all(keybio);
     RSA_free(rsa);
 
-    return encrypt_text;
+    return "";
 }
 void GenerateRSAKey(std::string &out_pub_key, std::string &out_pri_key)
 {
@@ -149,9 +156,11 @@ auto GenTriplet()
     std::string closeKey;
 
     GenerateRSAKey(openKey, closeKey);
+    std::cout << "Nonce and keys generated" << std::endl;
     unsigned char hash_buf[32];
     SHA256(nonceBuf, 32, hash_buf);
-    s = RsaPriEncrypt(std::string((char *)hash_buf, 32), closeKey);
+    auto hashStr = std::string((char*)hash_buf, 32);
+    s = RsaPriSign(hashStr, closeKey);
     return result;
 }
 void SendTriplet(const AuthTriplet& serverTriplet, Socket_ptr sock, boost::system::error_code &code, asio::yield_context context){
