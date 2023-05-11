@@ -114,7 +114,7 @@ template<>
 std::optional<HelmanKey> FromJson(const Json& jsonData){
     std::optional<HelmanKey> result;
     try{
-        auto key = jsonData.find("key");
+        auto key = jsonData.find("Key");
         if(key != jsonData.cend()){
             result = HelmanKey{someBigNumber: key->get<std::int32_t>()};
         }
