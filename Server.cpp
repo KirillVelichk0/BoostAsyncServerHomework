@@ -94,7 +94,9 @@ std::map<std::string, CallableReaction> ConstructReacions()
                         else{
                             answer.passed = "Not Passed";
                         }
+                        std::cout << "Converting" << std::endl;
                         auto jAnswer = ToJson(answer);
+                        std::cout <<"Passed: " << answer.passed << std::endl;
                         jsonSession.get().SendJson(jAnswer, ec.get(), yield);
                     }
                     else{
@@ -169,12 +171,12 @@ void ServerDemon::do_clientSession(JsonMq &&jsonMqSession)
             }
         };
     };
-    asio::spawn(self->sysService, dataForSpawnFactory());
+    asio::spawn(self->context, dataForSpawnFactory());
 }
 void ServerDemon::do_accept(JsonMq &jsonMqSession, boost::system::error_code &ec, asio::yield_context yield)
 {
     auto self = shared_from_this();
-    jsonMqSession = JsonMq(self->sysService, self->acc, ec, yield);
+    jsonMqSession = JsonMq(self->context, self->acc, ec, yield);
     if (ec.value() == 0)
     {
         std::cout << "Connection Ok" << std::endl;
@@ -185,7 +187,7 @@ void ServerDemon::do_accept(JsonMq &jsonMqSession, boost::system::error_code &ec
     }
 }
 
-ServerDemon::ServerDemon() : ep(asio::ip::tcp::v4(), 2001), acc(sysService, ep) {}
+ServerDemon::ServerDemon() : ep(asio::ip::tcp::v4(), 2001), acc(context, ep), ssl_ctx(boost::asio::ssl::context::tls_client), master(context, ssl_ctx){}
 void ServerDemon::RunThread(asio::yield_context yield)
 {
     try
@@ -227,8 +229,8 @@ void ServerDemon::RunDemon()
     };
     auto run = [&runYield, self]()
     {
-        asio::spawn(self->sysService, runYield);
-        self->sysService.run();
+        asio::spawn(self->context, runYield);
+        self->context.run();
     };
     for (int i = 0; i < 1; i++)
     {

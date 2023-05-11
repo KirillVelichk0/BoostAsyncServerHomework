@@ -1,6 +1,7 @@
 {
-    "cquery.cacheDirectory": "${workspaceFolder}/.vscode/cquery_cached_index/",
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
     "files.associations": {
+        "*.embeddedhtml": "html",
         "*.inc": "cpp",
         "cctype": "cpp",
         "clocale": "cpp",
@@ -20,6 +21,8 @@
         "bit": "cpp",
         "*.tcc": "cpp",
         "bitset": "cpp",
+        "cfenv": "cpp",
+        "charconv": "cpp",
         "chrono": "cpp",
         "codecvt": "cpp",
         "compare": "cpp",
@@ -54,6 +57,7 @@
         "tuple": "cpp",
         "type_traits": "cpp",
         "utility": "cpp",
+        "slist": "cpp",
         "fstream": "cpp",
         "future": "cpp",
         "initializer_list": "cpp",
@@ -74,12 +78,19 @@
         "stop_token": "cpp",
         "streambuf": "cpp",
         "thread": "cpp",
-        "cfenv": "cpp",
         "cinttypes": "cpp",
         "typeindex": "cpp",
         "typeinfo": "cpp",
         "valarray": "cpp",
         "variant": "cpp",
-        "*.ipp": "cpp"
+        "*.ipp": "cpp",
+        "csetjmp": "cpp",
+        "strstream": "cpp",
+        "barrier": "cpp",
+        "rope": "cpp",
+        "latch": "cpp",
+        "scoped_allocator": "cpp",
+        "shared_mutex": "cpp",
+        "syncstream": "cpp"
     }
 }

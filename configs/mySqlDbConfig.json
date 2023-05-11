@@ -2,6 +2,6 @@
     "hostName": "localhost",
     "port": 33060,
     "user":"root",
-    "pathToPasswordFile": "/home/kirill/private/mySqlPassw.json"
+    "pathToPasswordFile": "/home/houdini/private/mySqlPassw.json"
 
 }
