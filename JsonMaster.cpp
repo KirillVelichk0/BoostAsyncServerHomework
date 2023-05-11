@@ -32,6 +32,20 @@ Json ToJson<KeyWord>(const KeyWord &data)
         throw ex;
     }
 }
+
+template<>
+Json ToJson<HelmanKey>(const HelmanKey& key){
+    Json result;
+    try{
+        result["Type"] = "Helman";
+        result["Key"] = key.someBigNumber;
+        return result;
+    }
+    catch (std::exception& ex){
+        throw ex;
+    }
+}
+
 template <>
 Json ToJson<AuthDataAnswer>(const AuthDataAnswer &answer)
 {
@@ -94,6 +108,20 @@ std::optional<AuthData> FromJson(const Json &jsonData)
         result.reset();
         return result;
     }
+}
+
+template<>
+std::optional<HelmanKey> FromJson(const Json& jsonData){
+    std::optional<HelmanKey> result;
+    try{
+        auto key = jsonData.find("key");
+        if(key != jsonData.cend()){
+            result = HelmanKey{someBigNumber: key->get<std::int32_t>()};
+        }
+    } catch(std::exception& ex){
+        result.reset();
+    }
+    return result;
 }
 template <>
 std::optional<RegistrData> FromJson(const Json &jsonData)

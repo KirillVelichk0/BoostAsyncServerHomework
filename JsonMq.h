@@ -18,6 +18,7 @@ public:
     JsonMq(JsonMq&& another);
     JsonMq& operator=(const JsonMq& another);
     JsonMq& operator=(JsonMq&& another);
+    void SetKey(std::int32_t key);
     Json GetJson(boost::system::error_code& ec, asio::yield_context yield) const;
     void SendJson(const Json& jsonData, boost::system::error_code& ec, asio::yield_context yield) const;
 

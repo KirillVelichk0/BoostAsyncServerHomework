@@ -17,6 +17,10 @@ struct RegistrData{
     std::string login;
     std::string password;
 };
+struct HelmanKey{
+    std::int32_t someBigNumber;
+};
+
 struct AuthData{
     std::string login;
     std::string hash;

@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <tuple>
 #include "JsonMaster.h"
+#include "DiffiHelman.h"
 #include <boost/coroutine/coroutine.hpp>
 using namespace std::string_literals;
 auto &ServerDemon::GetDbSession()
@@ -36,7 +37,8 @@ std::map<std::string, CallableReaction> ConstructReacions()
                         std::cout << "Sending to db from reaction" << std::endl;
                         sharedContext->GetDbSession().SendRegistrDataToDB(registrData.value());
                     }
-                    else{
+                    else
+                    {
                         throw std::exception();
                     }
                 }
@@ -47,6 +49,31 @@ std::map<std::string, CallableReaction> ConstructReacions()
             }
         };
         result.insert(std::make_pair("RegistrationRequest", std::move(SendRegistDataToDb)));
+    }
+    {
+        auto GetDiffiKey = [](MyRf<JsonMq> jsonSession, std::weak_ptr<ServerDemon> serverSession, MyRf<Json> data, MyRf<boost::system::error_code> ec, asio::yield_context yield) {
+            auto sharedContext = serverSession.lock();
+            if (sharedContext != nullptr){
+                try{
+                    auto helmanKey = FromJson<HelmanKey>(data.get());
+                    if(!helmanKey.has_value()){
+                        throw std::exception();
+                    }
+                    std::int32_t mySecterKey = GenerateMySecretKey();
+                    auto preKey = GenRandomPreKey(mySecterKey).convert_to<std::int32_t>();
+                    auto finalKey = GenFinalKey(helmanKey.value().someBigNumber, mySecterKey);
+                    auto response = HelmanKey{someBigNumber: preKey};
+                    Json answer = ToJson(response);
+                    jsonSession.get().SendJson(answer, ec, yield);
+                    jsonSession.get().SetKey(finalKey.value());
+                }
+                catch (std::exception &e)
+                {
+                    ec.get() = asio::error::invalid_argument;
+                }
+            }
+        };
+        result.insert(std::make_pair("Helman", std::move(GetDiffiKey)));
     }
     {
         auto SendWordToClient = [](MyRf<JsonMq> jsonSession, std::weak_ptr<ServerDemon> serverSession, MyRf<Json> data, MyRf<boost::system::error_code> ec, asio::yield_context yield)
@@ -64,7 +91,8 @@ std::map<std::string, CallableReaction> ConstructReacions()
                         Json jAnswer = ToJson(answer);
                         jsonSession.get().SendJson(jAnswer, ec, yield);
                     }
-                    else{
+                    else
+                    {
                         throw std::exception();
                     }
                 }
@@ -85,24 +113,27 @@ std::map<std::string, CallableReaction> ConstructReacions()
                 try
                 {
                     auto authData = FromJson<AuthData>(data.get());
-                    if(authData.has_value()){
+                    if (authData.has_value())
+                    {
                         bool compareResult = sharedContext->GetDbSession().CompareSendedAuthDataWithDb(authData.value());
                         AuthDataAnswer answer;
-                        if(compareResult){
+                        if (compareResult)
+                        {
                             answer.passed = "Passed";
                         }
-                        else{
+                        else
+                        {
                             answer.passed = "Not Passed";
                         }
                         std::cout << "Converting" << std::endl;
                         auto jAnswer = ToJson(answer);
-                        std::cout <<"Passed: " << answer.passed << std::endl;
+                        std::cout << "Passed: " << answer.passed << std::endl;
                         jsonSession.get().SendJson(jAnswer, ec.get(), yield);
                     }
-                    else{
+                    else
+                    {
                         throw std::exception();
                     }
-                   
                 }
                 catch (std::exception &ex)
                 {
@@ -187,7 +218,7 @@ void ServerDemon::do_accept(JsonMq &jsonMqSession, boost::system::error_code &ec
     }
 }
 
-ServerDemon::ServerDemon() : ep(asio::ip::tcp::v4(), 2001), acc(context, ep), ssl_ctx(boost::asio::ssl::context::tls_client), master(context, ssl_ctx){}
+ServerDemon::ServerDemon() : ep(asio::ip::tcp::v4(), 2001), acc(context, ep), ssl_ctx(boost::asio::ssl::context::tls_client), master(context, ssl_ctx) {}
 void ServerDemon::RunThread(asio::yield_context yield)
 {
     try
