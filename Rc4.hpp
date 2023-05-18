@@ -3,10 +3,13 @@
 #include <string>
 #include <cstdint>
 
-class Rc4Handler{
+class Rc4Handler
+{
 private:
-    std::mt19937 gen;
+    std::mt19937_64 gen;
+
 public:
-    Rc4Handler(std::int32_t root);
-    void CryptDectypt(std::string& data);
+    Rc4Handler(std::int64_t root);
+    void CryptDecrypt(std::string &data);
+    void CryptDecrypt(std::vector<char>& data);
 };

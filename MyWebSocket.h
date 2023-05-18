@@ -7,11 +7,14 @@
 #include <vector>
 #include <array>
 #include <boost/asio/spawn.hpp>
+#include "Rc4.hpp"
+#include <optional>
 namespace asio = boost::asio;
 struct Client{
     asio::ip::tcp::socket socket;
     std::array<char, 4096> buf;
     std::vector<char> nonProcessedData;
+    std::optional<Rc4Handler> cipherer;
 };
 using Socket_ptr = std::shared_ptr<Client>;
 std::unique_ptr<Client> ConstructSocket(asio::io_service& sysService);

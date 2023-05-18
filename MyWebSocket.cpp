@@ -286,6 +286,9 @@ std::string MyWebSocketHandler::ReadPackage(Socket_ptr sock, boost::system::erro
     {
         return ""s;
     }
+    if(sock->cipherer.has_value()){
+        sock->cipherer.value().CryptDecrypt(szPackage);
+    }
     using NetworkInt32 = boost::endian::big_uint32_t;
     // считаем, что заголовок нам приходит в формате bigEndian32
     auto eSz = reinterpret_cast<NetworkInt32 *>(szPackage.data());
@@ -297,7 +300,11 @@ std::string MyWebSocketHandler::ReadPackage(Socket_ptr sock, boost::system::erro
         return ""s;
     }
     std::cout << "NonProc size from send pack in front " << sock->nonProcessedData.size() << std::endl;
-    return this->ReadForCount(sock, normalSize, ec, yield);
+    auto result = this->ReadForCount(sock, normalSize, ec, yield);
+    if(sock->cipherer.has_value()){
+        sock->cipherer.value().CryptDecrypt(result);
+    }
+    return result;
 }
 void MyWebSocketHandler::SendPackage(Socket_ptr sock, std::string data, boost::system::error_code &ec, asio::yield_context yield)
 {
@@ -320,6 +327,9 @@ void MyWebSocketHandler::SendPackage(Socket_ptr sock, std::string data, boost::s
     decltype(auto) pos = *it;
     std::memcpy(&pos, data.data(), data.size());
     std::int32_t count = 0;
+    if(sock->cipherer.has_value()){
+        sock->cipherer.value().CryptDecrypt(buffer);
+    }
     auto buf = asio::buffer(buffer);
     while (count < sz)
     {

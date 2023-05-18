@@ -18,10 +18,11 @@ find_package(OpenSSL REQUIRED)
 INCLUDE_DIRECTORIES( ${Boost_INCLUDE_DIR} )
 link_libraries(${OPENSSL_LIBRARIES})
 
-add_library(${PROJECT_NAME_MY}_MyWebSocket MyWebSocket.h MyWebSocket.cpp)
-target_link_libraries( ${PROJECT_NAME_MY}_MyWebSocket ${Boost_LIBRARIES} OpenSSL::Crypto)
-
 add_library(${PROJECT_NAME_MY}_Rc4 Rc4.hpp Rc4.cpp)
+
+add_library(${PROJECT_NAME_MY}_MyWebSocket MyWebSocket.h MyWebSocket.cpp)
+target_link_libraries( ${PROJECT_NAME_MY}_MyWebSocket ${Boost_LIBRARIES} OpenSSL::Crypto ${PROJECT_NAME_MY}_Rc4)
+
 
 add_library(${PROJECT_NAME_MY}_JsonMaster JsonMaster.h JsonMaster.cpp)
 add_library(${PROJECT_NAME_MY}_DBMaster DBMaster.h DBMaster.cpp)

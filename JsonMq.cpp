@@ -6,11 +6,10 @@
 struct JsonMq::Impl
 {
     Socket_ptr socket;
-    std::optional<std::int32_t> helmanKey;
 
 };
-void JsonMq::SetKey(std::int32_t key){
-    this->impl->helmanKey = key;
+void JsonMq::SetKey(std::int64_t key){
+    this->impl->socket->cipherer = Rc4Handler(key);
 }
 std::unique_ptr<JsonMq::Impl> CreateMyWebSocket(asio::io_service &sysService){
     return std::make_unique<JsonMq::Impl>(JsonMq::Impl{.socket = std::make_shared<Client>(Client{.socket = asio::ip::tcp::socket(sysService)})});
