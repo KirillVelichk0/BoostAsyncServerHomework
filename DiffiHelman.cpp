@@ -4,7 +4,7 @@
 #include <sstream>
 #include <cstdint>
 #include <optional>
-auto GetGenerator(){
+auto& GetGenerator(){
     static std::random_device rnd;
     static std::mt19937 generator{rnd()};
     return generator;
@@ -20,7 +20,7 @@ bmp::cpp_int GenRandomPreKey(std::int64_t mySecretKey, std::int64_t a, std::int6
 }
 
 std::int64_t GenerateMySecretKey(){
-    auto generator = GetGenerator();
+    auto& generator = GetGenerator();
     std::uniform_int_distribution<> distr(1000, 2000000000);
     return distr(generator);
 }
