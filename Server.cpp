@@ -11,9 +11,9 @@
 #include <string>
 #include <iostream>
 #include <cstdint>
+#include "DiffiHelman.h"
 #include <tuple>
 #include "JsonMaster.h"
-#include "DiffiHelman.h"
 #include <boost/coroutine/coroutine.hpp>
 using namespace std::string_literals;
 auto &ServerDemon::GetDbSession()
@@ -56,12 +56,16 @@ std::map<std::string, CallableReaction> ConstructReacions()
             if (sharedContext != nullptr){
                 try{
                     auto helmanKey = FromJson<HelmanKey>(data.get());
+                    std::cout << "Diffi parsed" << std::endl;
                     if(!helmanKey.has_value()){
                         throw std::exception();
                     }
-                    std::int32_t mySecterKey = GenerateMySecretKey();
-                    auto preKey = GenRandomPreKey(mySecterKey).convert_to<std::int32_t>();
-                    auto finalKey = GenFinalKey(helmanKey.value().someBigNumber, mySecterKey);
+                    std::int64_t mySecterKey = GenerateMySecretKey();
+                    std::cout << "secretKey= " << mySecterKey << std::endl;
+                    auto preKey = GenRandomPreKey(mySecterKey, helmanKey.value().a, helmanKey.value().p).convert_to<std::int64_t>();
+                    auto finalKey = GenFinalKey(helmanKey.value().someBigNumber, mySecterKey, helmanKey.value().p);
+                    std::cout << "preKey= " << preKey << std::endl;
+                    std::cout << "finalKey= " << finalKey.value() << std::endl;
                     auto response = HelmanKey{someBigNumber: preKey};
                     Json answer = ToJson(response);
                     jsonSession.get().SendJson(answer, ec, yield);
@@ -75,6 +79,7 @@ std::map<std::string, CallableReaction> ConstructReacions()
         };
         result.insert(std::make_pair("Helman", std::move(GetDiffiKey)));
     }
+
     {
         auto SendWordToClient = [](MyRf<JsonMq> jsonSession, std::weak_ptr<ServerDemon> serverSession, MyRf<Json> data, MyRf<boost::system::error_code> ec, asio::yield_context yield)
         {

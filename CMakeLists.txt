@@ -21,6 +21,8 @@ link_libraries(${OPENSSL_LIBRARIES})
 add_library(${PROJECT_NAME_MY}_MyWebSocket MyWebSocket.h MyWebSocket.cpp)
 target_link_libraries( ${PROJECT_NAME_MY}_MyWebSocket ${Boost_LIBRARIES} OpenSSL::Crypto)
 
+add_library(${PROJECT_NAME_MY}_Rc4 Rc4.hpp Rc4.cpp)
+
 add_library(${PROJECT_NAME_MY}_JsonMaster JsonMaster.h JsonMaster.cpp)
 add_library(${PROJECT_NAME_MY}_DBMaster DBMaster.h DBMaster.cpp)
 target_link_libraries( ${PROJECT_NAME_MY}_DBMaster PUBLIC ${Boost_LIBRARIES} OpenSSL::Crypto ${PROJECT_NAME_MY}_JsonMaster)
@@ -31,7 +33,7 @@ add_library(${PROJECT_NAME_MY}_helman DiffiHelman.h DiffiHelman.cpp)
 target_link_libraries(${PROJECT_NAME_MY}_helman ${Boost_LIBRARIES})
 
 add_library(${PROJECT_NAME_MY}_demon Server.h Server.cpp)
-target_link_libraries(${PROJECT_NAME_MY}_demon OpenSSL::Crypto)
+target_link_libraries(${PROJECT_NAME_MY}_demon OpenSSL::Crypto ${PROJECT_NAME_MY}_Rc4)
 target_link_libraries( ${PROJECT_NAME_MY}_demon ${Boost_LIBRARIES} ${PROJECT_NAME_MY}_JsonMq OpenSSL::Crypto)
 target_link_libraries(${PROJECT_NAME_MY}_demon  ${PROJECT_NAME_MY}_DBMaster ${PROJECT_NAME_MY}_JsonMaster ${PROJECT_NAME_MY}_helman)
 add_executable(${PROJECT_NAME_MY}_ex main.cpp)

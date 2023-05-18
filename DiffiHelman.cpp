@@ -11,28 +11,27 @@ auto GetGenerator(){
 }
 
 auto GetBase(){
-    static auto pair = std::make_pair(bmp::int128_t(115), bmp::int128_t(2003000168));
+    static auto pair = std::make_pair(bmp::cpp_int(115), bmp::cpp_int(2003000168));
     return pair;
 }
 
-bmp::int128_t GenRandomPreKey(std::int32_t mySecretKey){
-    auto base = GetBase();
-    return bmp::powm(base.first, bmp::int128_t(mySecretKey), base.second);
+bmp::cpp_int GenRandomPreKey(std::int64_t mySecretKey, std::int64_t a, std::int64_t p){
+    return bmp::powm(bmp::cpp_int(a), bmp::cpp_int(mySecretKey), bmp::cpp_int(p));
 }
 
-std::int32_t GenerateMySecretKey(){
+std::int64_t GenerateMySecretKey(){
     auto generator = GetGenerator();
     std::uniform_int_distribution<> distr(1000, 2000000000);
     return distr(generator);
 }
 
-std::optional<std::int32_t> GenFinalKey(std::int32_t anotherKey, std::int32_t mySecretKey){
-    std::optional<std::int32_t> result;
+std::optional<std::int64_t> GenFinalKey(std::int64_t anotherKey, std::int64_t mySecretKey, std::int64_t p){
+    std::optional<std::int64_t> result;
     //std::int32_t anotherKeyI;
-    bmp::int128_t anotherKeyMPZ = anotherKey;
+    bmp::cpp_int anotherKeyMPZ = anotherKey;
     auto base = GetBase();
-    bmp::int128_t mySecrMPZ = mySecretKey;
+    bmp::cpp_int mySecrMPZ = mySecretKey;
         //bmp::mpz_int anotherKeyMPZ = anotherKeyI;
-    result= bmp::powm(anotherKeyMPZ, mySecrMPZ, base.second).convert_to<std::int32_t>();
+    result= bmp::powm(anotherKeyMPZ, mySecrMPZ, bmp::cpp_int(p)).convert_to<std::int64_t>();
     return result;
 }

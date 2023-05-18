@@ -39,6 +39,8 @@ Json ToJson<HelmanKey>(const HelmanKey& key){
     try{
         result["Type"] = "Helman";
         result["Key"] = key.someBigNumber;
+        result["A"] = key.a;
+        result["P"] = key.p;
         return result;
     }
     catch (std::exception& ex){
@@ -115,8 +117,12 @@ std::optional<HelmanKey> FromJson(const Json& jsonData){
     std::optional<HelmanKey> result;
     try{
         auto key = jsonData.find("Key");
-        if(key != jsonData.cend()){
-            result = HelmanKey{someBigNumber: key->get<std::int32_t>()};
+        auto A =jsonData.find("A");
+        auto P = jsonData.find("P");
+        if(key != jsonData.cend() && A != jsonData.cend() && P != jsonData.cend()){
+            std::cout << "All finded" << std::endl;
+            result = HelmanKey{key->get<std::int64_t>(), A->get<std::int64_t>(), P->get<std::int64_t>()};
+            std::cout << "Diffi parsed in FromJson module" << std::endl;
         }
     } catch(std::exception& ex){
         result.reset();

@@ -3,8 +3,7 @@
 #include <optional>
 #include <cstdint>
 namespace bmp = boost::multiprecision;
-bmp::int128_t GenRandomPreKey(std::int32_t mySecretKey);
+bmp::cpp_int GenRandomPreKey(std::int64_t mySecretKey, std::int64_t a, std::int64_t p);
+std::int64_t GenerateMySecretKey();
 
-std::int32_t GenerateMySecretKey();
-
-std::optional<std::int32_t> GenFinalKey(std::int32_t anotherKey, std::int32_t mySecretKey);
+std::optional<std::int64_t> GenFinalKey(std::int64_t anotherKey, std::int64_t mySecretKey, std::int64_t p);
