@@ -3,6 +3,8 @@
 #include <string>
 #include <cstdint>
 
+
+//! Не Rc4
 class Rc4Handler
 {
 private:
